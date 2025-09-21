@@ -1,0 +1,12 @@
+#!/bin/bash
+
+# Set library path for compiled Python packages
+export LD_LIBRARY_PATH="/nix/store/41ym1jm1b7j3rhglk82gwg9jml26z1km-gcc-14.3.0-lib/lib:$LD_LIBRARY_PATH"
+
+# Activate virtual environment if it exists
+if [ -f ".venv/bin/activate" ]; then
+    source .venv/bin/activate
+fi
+
+# Run the provided command
+exec python "$@"
