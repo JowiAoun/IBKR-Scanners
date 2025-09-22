@@ -1,0 +1,47 @@
+# Example backtesting configuration file
+# Use with: python src/05_backtest_orb_example.py --config backtest_config_example.yaml
+
+# Basic Settings
+symbols:
+  - AAPL
+  - TSLA
+  - MSFT
+capital: 100000
+duration: "30 D"
+bar_size: "1 min"
+
+# Date Range (optional)
+# start_date: "2023-01-01"
+# end_date: "2023-12-31"
+
+# Strategy Parameters
+strategy:
+  opening_range_minutes: 30
+  min_range_percent: 0.5
+  max_range_percent: 5.0
+  position_size_percent: 2.0
+  stop_loss_percent: 2.0
+  profit_target_percent: 4.0
+  max_positions: 3
+
+# Trading Environment
+trading:
+  commission_per_share: 0.005
+  slippage_bps: 2.0
+  delay_between_requests: 2.0
+
+# Output Options
+output:
+  output_dir: "backtest_results"
+  save_trades: true
+  save_charts: true
+  verbose: false
+  quiet: false
+
+# Symbol Management
+symbol_management:
+  # symbols_file: "example_symbols.txt"
+  exclude_symbols: []
+
+# Presets (uncomment to use)
+# preset: "aggressive"  # Options: conservative, aggressive, scalping, swing
