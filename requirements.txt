@@ -1,3 +1,7 @@
 ib_async
 pytz
 python-dotenv
+pandas
+numpy
+matplotlib
+seaborn
