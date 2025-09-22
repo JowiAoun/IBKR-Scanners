@@ -1,8 +1,7 @@
-from ib_async import IB
 from ib_async.contract import Stock
+from utils.ibkr_connection import get_ibkr_connection
 
-ib = IB()
-ib.connect("172.25.160.1", 7497, clientId=1, timeout=15)
+ib = get_ibkr_connection()
 
 contract = Stock("AAPL", "SMART", "USD")
 
@@ -15,7 +14,7 @@ bars = ib.reqHistoricalData(
     useRTH=True
 )
 
-# Print all of the bars, first 15 bars, and the last 15 bars
+# Print the first 15 bars (first 15 minutes as they are 1 minute bars)
 for bar in bars[-15:]:
     print(
         f"{bar.date}  "
