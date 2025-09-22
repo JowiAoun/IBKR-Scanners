@@ -5,5 +5,5 @@ Scanners for IBKR, made for fun and learning about the API
 ## Ugly run but yeah
 
 ```bash
-./run ./src/01_scan_gaps.py
+./run ./src/...py
 ```

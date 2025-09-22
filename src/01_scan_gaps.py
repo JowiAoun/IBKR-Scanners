@@ -1,18 +1,29 @@
-from ib_async import IB, ScannerSubscription
-from ib_async.contract import Contract
+from ib_async import IB
+from ib_async.contract import Stock
 
 ib = IB()
-ib.connect('127.0.0.1', 7497, clientId=1)
+ib.connect("172.25.160.1", 7497, clientId=1, timeout=15)
 
-sub = ScannerSubscription()
-sub.instrument  = 'STK'
-sub.locationCode = 'STK.US.MAJOR'
-sub.scanCode    = 'HIGH_OPEN_GAP'
+contract = Stock("AAPL", "SMART", "USD")
 
-scan_data = ib.reqScannerData(sub)
+bars = ib.reqHistoricalData(
+    contract,
+    endDateTime="",
+    durationStr="1 D",
+    barSizeSetting="1 min",
+    whatToShow="TRADES",
+    useRTH=True
+)
 
-for data in scan_data[:10]:
-    print(data.rank)
-    print(data.contractDetails.contract.symbol)
+# Print all of the bars, first 15 bars, and the last 15 bars
+for bar in bars[-15:]:
+    print(
+        f"{bar.date}  "
+        f"O={bar.open}  "
+        f"H={bar.high}  "
+        f"L={bar.low}  "
+        f"C={bar.close}  "
+        f"V={int(bar.volume)}"
+    )
 
 ib.disconnect()
