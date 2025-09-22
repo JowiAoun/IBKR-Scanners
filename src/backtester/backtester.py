@@ -1,5 +1,5 @@
 from typing import Dict, List, Optional
-from datetime import datetime, timedelta
+from datetime import datetime
 import pandas as pd
 from .portfolio import Portfolio
 from .strategy_base import BaseStrategy, StrategySignal, Signal
@@ -166,17 +166,37 @@ class Backtester:
         all_signals = []
         for strategy in self.strategies:
             try:
-                signals = strategy.on_bar(
-                    current_bars, 
-                    historical_data_up_to_now, 
-                    self.portfolio, 
-                    timestamp
-                )
-                for signal in signals:
-                    signal.metadata['strategy'] = strategy.name
-                    all_signals.append(signal)
+                # For each symbol, call the strategy with proper symbol context
+                for symbol, current_bar in current_bars.items():
+                    entry_signals = strategy.generate_signals(
+                        current_bar, 
+                        historical_data_up_to_now[symbol], 
+                        self.portfolio, 
+                        timestamp,
+                        symbol=symbol  # Pass symbol explicitly
+                    )
+                    for signal in entry_signals:
+                        signal.metadata['strategy'] = strategy.name
+                        all_signals.append(signal)
+                
+                # Check exit conditions for existing positions
+                for symbol in list(self.portfolio.positions.keys()):
+                    if symbol in current_bars:
+                        exit_signal = strategy.should_exit(
+                            symbol, 
+                            current_bars[symbol], 
+                            historical_data_up_to_now[symbol],
+                            self.portfolio, 
+                            timestamp
+                        )
+                        if exit_signal:
+                            exit_signal.metadata['strategy'] = strategy.name
+                            all_signals.append(exit_signal)
+                            
             except Exception as e:
                 print(f"Error in strategy {strategy.name}: {e}")
+                import traceback
+                traceback.print_exc()
                 continue
         
         # Log all signals

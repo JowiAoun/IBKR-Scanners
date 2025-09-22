@@ -92,10 +92,18 @@ class OpeningRangeBreakout(BaseStrategy):
             market_open_ts = pd.Timestamp(market_open)
             range_end_ts = pd.Timestamp(range_end)
             
-            # Get opening range data
+            # Get opening range data - find first bar at or after market open
+            # This handles cases where exact 9:30 AM data might not exist
+            market_data_start = daily_data[daily_data.index >= market_open_ts]
+            if market_data_start.empty:
+                continue  # No data for this day after market open
+            
+            actual_start_time = market_data_start.index[0]
+            actual_end_time = actual_start_time + timedelta(minutes=self.get_parameter('opening_range_minutes'))
+            
             opening_range_data = daily_data[
-                (daily_data.index >= market_open_ts) & 
-                (daily_data.index < range_end_ts)
+                (daily_data.index >= actual_start_time) & 
+                (daily_data.index < actual_end_time)
             ]
             
             if not opening_range_data.empty:
@@ -117,8 +125,8 @@ class OpeningRangeBreakout(BaseStrategy):
                         'low': or_low,
                         'range': or_range,
                         'range_percent': range_percent,
-                        'start_time': market_open_ts,
-                        'end_time': range_end_ts,
+                        'start_time': actual_start_time,
+                        'end_time': actual_end_time,
                         'avg_price': avg_price
                     }
     
@@ -126,13 +134,27 @@ class OpeningRangeBreakout(BaseStrategy):
                         current_bar: pd.Series, 
                         historical_data: pd.DataFrame, 
                         portfolio: Portfolio,
-                        timestamp: datetime) -> List[StrategySignal]:
+                        timestamp: datetime,
+                        symbol: str = None) -> List[StrategySignal]:
         """Generate entry signals for opening range breakouts."""
         signals = []
         
-        symbol = current_bar.name if hasattr(current_bar, 'name') else 'UNKNOWN'
+        # Use explicitly passed symbol or fallback to bar name
+        if symbol is None:
+            symbol = current_bar.name if hasattr(current_bar, 'name') else 'UNKNOWN'
+        
         current_date = timestamp.date()
         current_price = current_bar['close']
+        
+        # Debug logging
+        debug_info = {
+            'symbol': symbol,
+            'timestamp': timestamp,
+            'current_price': current_price,
+            'has_max_positions': len(portfolio.positions) >= self.get_parameter('max_positions'),
+            'has_existing_position': not portfolio.is_flat(symbol),
+            'has_opening_range': symbol in self.state['opening_ranges'] and current_date in self.state['opening_ranges'][symbol]
+        }
         
         # Check if we already have max positions
         if len(portfolio.positions) >= self.get_parameter('max_positions'):
@@ -145,12 +167,19 @@ class OpeningRangeBreakout(BaseStrategy):
         # Check if we have an opening range for today
         if (symbol not in self.state['opening_ranges'] or 
             current_date not in self.state['opening_ranges'][symbol]):
+            debug_info['no_opening_range_reason'] = f"Symbol {symbol} not in ranges or date {current_date} not found"
+            if self.get_state('debug_mode', False):
+                print(f"[ORB DEBUG] {timestamp} {symbol}: No opening range - {debug_info['no_opening_range_reason']}")
             return signals
         
         opening_range = self.state['opening_ranges'][symbol][current_date]
+        debug_info['opening_range'] = opening_range
         
         # Only trade after opening range period has ended
         if timestamp < opening_range['end_time']:
+            debug_info['before_range_end'] = True
+            if self.get_state('debug_mode', False):
+                print(f"[ORB DEBUG] {timestamp} {symbol}: Before range end time {opening_range['end_time']}")
             return signals
         
         # Check for breakout conditions
@@ -159,8 +188,23 @@ class OpeningRangeBreakout(BaseStrategy):
         
         # Calculate position size
         position_size = self._calculate_position_size(portfolio, current_price)
+        debug_info.update({
+            'or_high': or_high,
+            'or_low': or_low,
+            'position_size': position_size,
+            'bullish_breakout': current_price > or_high,
+            'bearish_breakout': current_price < or_low
+        })
+        
         if position_size <= 0:
+            debug_info['position_size_zero'] = True
+            if self.get_state('debug_mode', False):
+                print(f"[ORB DEBUG] {timestamp} {symbol}: Position size is 0 (portfolio equity: ${portfolio.total_equity:,.2f})")
             return signals
+        
+        # Log breakout analysis
+        if self.get_state('debug_mode', False) and (current_price > or_high or current_price < or_low):
+            print(f"[ORB DEBUG] {timestamp} {symbol}: BREAKOUT DETECTED! Price: ${current_price:.2f}, Range: ${or_low:.2f}-${or_high:.2f}")
         
         # Check for bullish breakout
         if current_price > or_high:
@@ -187,6 +231,9 @@ class OpeningRangeBreakout(BaseStrategy):
             
             # Store entry price for exit logic
             self.state['position_entry_prices'][symbol] = current_price
+            
+            if self.get_state('debug_mode', False):
+                print(f"[ORB DEBUG] {timestamp} {symbol}: BUY SIGNAL GENERATED! Size: {position_size}, Stop: ${stop_loss:.2f}, Target: ${profit_target:.2f}")
         
         # Check for bearish breakout
         elif current_price < or_low:
@@ -213,6 +260,14 @@ class OpeningRangeBreakout(BaseStrategy):
             
             # Store entry price for exit logic
             self.state['position_entry_prices'][symbol] = current_price
+            
+            if self.get_state('debug_mode', False):
+                print(f"[ORB DEBUG] {timestamp} {symbol}: SELL SIGNAL GENERATED! Size: {position_size}, Stop: ${stop_loss:.2f}, Target: ${profit_target:.2f}")
+        
+        # Store debug info for analysis
+        if not hasattr(self.state, 'debug_log'):
+            self.state['debug_log'] = []
+        self.state['debug_log'].append(debug_info)
         
         return signals
     
@@ -351,3 +406,26 @@ class OpeningRangeBreakout(BaseStrategy):
                     'max_range_percent': max(range_percents)
                 }
         return summary
+    
+    def get_debug_statistics(self) -> Dict:
+        """Get debug statistics from strategy execution."""
+        if 'debug_log' not in self.state or not self.state['debug_log']:
+            return {}
+        
+        debug_df = pd.DataFrame(self.state['debug_log'])
+        
+        stats = {
+            'total_evaluations': len(debug_df),
+            'unique_symbols': debug_df['symbol'].nunique() if 'symbol' in debug_df else 0,
+            'no_opening_range': debug_df['no_opening_range_reason'].notna().sum() if 'no_opening_range_reason' in debug_df else 0,
+            'before_range_end': debug_df.get('before_range_end', False).sum(),
+            'position_size_zero': debug_df.get('position_size_zero', False).sum(),
+            'bullish_breakouts': debug_df.get('bullish_breakout', False).sum(),
+            'bearish_breakouts': debug_df.get('bearish_breakout', False).sum(),
+            'max_positions_reached': debug_df.get('has_max_positions', False).sum(),
+            'existing_position': debug_df.get('has_existing_position', False).sum()
+        }
+        
+        stats['total_breakouts'] = stats['bullish_breakouts'] + stats['bearish_breakouts']
+        
+        return stats

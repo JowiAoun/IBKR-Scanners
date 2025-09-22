@@ -41,7 +41,8 @@ class BaseStrategy(ABC):
                         current_bar: pd.Series, 
                         historical_data: pd.DataFrame, 
                         portfolio: Portfolio,
-                        timestamp: datetime) -> List[StrategySignal]:
+                        timestamp: datetime,
+                        symbol: str = None) -> List[StrategySignal]:
         """
         Generate trading signals based on current market data.
         
@@ -50,6 +51,7 @@ class BaseStrategy(ABC):
             historical_data: Historical price data up to current bar
             portfolio: Current portfolio state
             timestamp: Current timestamp
+            symbol: Symbol being processed (optional, for explicit passing)
             
         Returns:
             List of StrategySignal objects
