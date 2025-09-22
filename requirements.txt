@@ -1,2 +1,3 @@
 ib_async
 pytz
+python-dotenv
